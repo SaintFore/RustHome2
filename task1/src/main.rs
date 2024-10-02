@@ -3,7 +3,8 @@ use eframe::egui;
 fn main() {
     let native_options = eframe::NativeOptions::default();
     
-    eframe::run_native("My egui App", native_options, Box::new(|cc| Ok(Box::new(MyEguiApp::new(cc)))));
+    eframe::run_native("My egui App", native_options, Box::new(|cc| Ok(Box::new(MyEguiApp::new(cc)))))
+    .expect("Failed to run eframe");
 }
 
 pub struct StringManagerOwned {
@@ -25,36 +26,36 @@ impl StringManagerOwned {
     }
 }
 struct MyEguiApp {
-    String1:String,
+    string1:String,
     manager:StringManagerOwned
 }
 impl Default for MyEguiApp {
     fn default() -> Self {
         Self {
-            String1: "".to_owned(),
+            string1: "".to_owned(),
             manager:StringManagerOwned::new(),
         }
     }
 }
 
 impl MyEguiApp {
-    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Self::default()
     }
 }
 impl eframe::App for MyEguiApp {
 
-   fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+   fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         
        egui::CentralPanel::default().show(ctx, |ui| {
            ui.heading("Hello!");
            ui.horizontal(|ui|{
             ui.label("The String you want to add:");
-            ui.text_edit_singleline(&mut self.String1);
+            ui.text_edit_singleline(&mut self.string1);
         });
         ui.horizontal(|ui|{
             if ui.button("add string").clicked(){
-                self.manager.add(self.String1.clone());
+                self.manager.add(self.string1.clone());
              }
             if ui.button("clear").clicked(){
                 self.manager.clear();
