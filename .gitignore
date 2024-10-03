@@ -3,6 +3,7 @@
 /task2/target/
 /task3/target/
 
+/task2/log.txt
 
 **/*.rs.bk
 
