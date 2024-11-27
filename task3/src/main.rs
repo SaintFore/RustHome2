@@ -2,19 +2,22 @@ use eframe::{egui, App, CreationContext};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use rand::seq::SliceRandom; 
 
 struct MyApp {
     counter: Arc<Mutex<i32>>,
     progress: Arc<Mutex<Vec<f32>>>,
-    thread_values: Arc<Mutex<Vec<i32>>>, // 新增字段存储每个线程的最终值
+    thread_values: Arc<Mutex<Vec<i32>>>,
+    quotes: Arc<Mutex<Vec<String>>>, // 存储每个线程的名言
 }
 
 impl Default for MyApp {
     fn default() -> Self {
         Self {
             counter: Arc::new(Mutex::new(0)),
-            progress: Arc::new(Mutex::new(vec![0.0; 5])), // 减少线程数量
-            thread_values: Arc::new(Mutex::new(vec![0; 5])), // 初始化每个线程的值为 0
+            progress: Arc::new(Mutex::new(vec![0.0; 5])),
+            thread_values: Arc::new(Mutex::new(vec![0; 5])),
+            quotes: Arc::new(Mutex::new(vec!["".to_string(); 5])), 
         }
     }
 }
@@ -26,21 +29,38 @@ impl App for MyApp {
                 let counter = Arc::clone(&self.counter);
                 let progress = Arc::clone(&self.progress);
                 let thread_values = Arc::clone(&self.thread_values);
-                for i in 0..5 { // 减少线程数量
+                let quotes = Arc::clone(&self.quotes);
+
+                let famous_quotes = vec![
+                    "学无止境。",
+                    "坚持就是胜利。",
+                    "知识就是力量。",
+                    "得之坦然，失之淡然。",
+                    "天道酬勤。",
+                ];
+
+                for i in 0..5 {
                     let counter = Arc::clone(&counter);
                     let progress = Arc::clone(&progress);
                     let thread_values = Arc::clone(&thread_values);
+                    let quotes = Arc::clone(&quotes);
+                    let quotes_list = famous_quotes.clone();
                     thread::spawn(move || {
+                        let mut rng = rand::thread_rng();
+                        let quote = quotes_list.choose(&mut rng).unwrap().to_string();
+                        {
+                            let mut qs = quotes.lock().unwrap();
+                            qs[i] = quote;
+                        }
                         for j in 0..=9 {
-                            thread::sleep(Duration::from_millis(50)); // 增加间隔时间
+                            thread::sleep(Duration::from_millis(50));
                             let mut num = counter.lock().unwrap();
                             *num += 1;
                             let mut prog = progress.lock().unwrap();
                             prog[i] = j as f32 / 9.0;
                         }
-                        // 更新每个线程的最终值
                         let mut values = thread_values.lock().unwrap();
-                        values[i] = 10; // 每个线程循环 10 次，最终值为 10
+                        values[i] = 10;
                     });
                 }
             }
@@ -59,7 +79,12 @@ impl App for MyApp {
                 ui.label(format!("线程 {} 最终值: {}", i + 1, value));
             }
 
-            ctx.request_repaint(); // 确保界面重新绘制
+            let quotes = self.quotes.lock().unwrap();
+            for (i, quote) in quotes.iter().enumerate() {
+                ui.label(format!("线程 {} 名人名言: {}", i + 1, quote));
+            }
+
+            ctx.request_repaint();
         });
     }
 }
@@ -77,11 +102,20 @@ fn main() {
                 "my_font".to_owned(),
                 egui::FontData::from_static(include_bytes!("C:\\Windows\\Fonts\\msyh.ttc")),
             );
-            fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, "my_font".to_owned());
-            fonts.families.entry(egui::FontFamily::Monospace).or_default().push("my_font".to_owned());
+            fonts
+                .families
+                .entry(egui::FontFamily::Proportional)
+                .or_default()
+                .insert(0, "my_font".to_owned());
+            fonts
+                .families
+                .entry(egui::FontFamily::Monospace)
+                .or_default()
+                .push("my_font".to_owned());
             cc.egui_ctx.set_fonts(fonts);
 
             Ok(Box::new(app))
         }),
-    ).unwrap();
+    )
+    .unwrap();
 }
