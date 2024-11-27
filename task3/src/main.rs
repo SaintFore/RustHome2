@@ -1,14 +1,17 @@
 use eframe::{egui, App, CreationContext};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
-use rand::seq::SliceRandom; 
+use rand::seq::SliceRandom;
 
 struct MyApp {
     counter: Arc<Mutex<i32>>,
     progress: Arc<Mutex<Vec<f32>>>,
     thread_values: Arc<Mutex<Vec<i32>>>,
-    quotes: Arc<Mutex<Vec<String>>>, // 存储每个线程的名言
+    quotes: Arc<Mutex<Vec<String>>>,
+    threads_running: bool,                // 新增：线程运行标志
+    completed_threads: Arc<AtomicUsize>,  // 新增：已完成线程计数
 }
 
 impl Default for MyApp {
@@ -17,7 +20,9 @@ impl Default for MyApp {
             counter: Arc::new(Mutex::new(0)),
             progress: Arc::new(Mutex::new(vec![0.0; 5])),
             thread_values: Arc::new(Mutex::new(vec![0; 5])),
-            quotes: Arc::new(Mutex::new(vec!["".to_string(); 5])), 
+            quotes: Arc::new(Mutex::new(vec!["".to_string(); 5])),
+            threads_running: false,
+            completed_threads: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
@@ -26,42 +31,79 @@ impl App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("启动线程").clicked() {
-                let counter = Arc::clone(&self.counter);
-                let progress = Arc::clone(&self.progress);
-                let thread_values = Arc::clone(&self.thread_values);
-                let quotes = Arc::clone(&self.quotes);
+                if !self.threads_running {
+                    self.threads_running = true;
+                    self.completed_threads.store(0, Ordering::SeqCst);
 
-                let famous_quotes = vec![
-                    "学无止境。",
-                    "坚持就是胜利。",
-                    "知识就是力量。",
-                    "得之坦然，失之淡然。",
-                    "天道酬勤。",
-                ];
+                    // 重置进度和数据
+                    {
+                        let mut prog = self.progress.lock().unwrap();
+                        for p in prog.iter_mut() {
+                            *p = 0.0;
+                        }
+                        let mut values = self.thread_values.lock().unwrap();
+                        for v in values.iter_mut() {
+                            *v = 0;
+                        }
+                        let mut qs = self.quotes.lock().unwrap();
+                        for q in qs.iter_mut() {
+                            *q = "".to_string();
+                        }
+                        let mut cnt = self.counter.lock().unwrap();
+                        *cnt = 0;
+                    }
 
-                for i in 0..5 {
-                    let counter = Arc::clone(&counter);
-                    let progress = Arc::clone(&progress);
-                    let thread_values = Arc::clone(&thread_values);
-                    let quotes = Arc::clone(&quotes);
-                    let quotes_list = famous_quotes.clone();
-                    thread::spawn(move || {
-                        let mut rng = rand::thread_rng();
-                        let quote = quotes_list.choose(&mut rng).unwrap().to_string();
-                        {
-                            let mut qs = quotes.lock().unwrap();
-                            qs[i] = quote;
-                        }
-                        for j in 0..=9 {
-                            thread::sleep(Duration::from_millis(50));
-                            let mut num = counter.lock().unwrap();
-                            *num += 1;
-                            let mut prog = progress.lock().unwrap();
-                            prog[i] = j as f32 / 9.0;
-                        }
-                        let mut values = thread_values.lock().unwrap();
-                        values[i] = 10;
-                    });
+                    let counter = Arc::clone(&self.counter);
+                    let progress = Arc::clone(&self.progress);
+                    let thread_values = Arc::clone(&self.thread_values);
+                    let quotes = Arc::clone(&self.quotes);
+                    let completed_threads = Arc::clone(&self.completed_threads);
+
+                    let famous_quotes = vec![
+                        "学无止境。",
+                        "坚持就是胜利。",
+                        "知识就是力量。",
+                        "得之坦然，失之淡然。",
+                        "天道酬勤。",
+                    ];
+
+                    for i in 0..5 {
+                        let counter = Arc::clone(&counter);
+                        let progress = Arc::clone(&progress);
+                        let thread_values = Arc::clone(&thread_values);
+                        let quotes = Arc::clone(&quotes);
+                        let completed_threads = Arc::clone(&completed_threads);
+                        let quotes_list = famous_quotes.clone();
+                        thread::spawn(move || {
+                            // 生成随机名言
+                            let mut rng = rand::thread_rng();
+                            let quote = quotes_list.choose(&mut rng).unwrap().to_string();
+                            // 存储名言
+                            {
+                                let mut qs = quotes.lock().unwrap();
+                                qs[i] = quote;
+                            }
+                            for j in 0..=9 {
+                                thread::sleep(Duration::from_millis(50));
+                                {
+                                    let mut num = counter.lock().unwrap();
+                                    *num += 1;
+                                }
+                                {
+                                    let mut prog = progress.lock().unwrap();
+                                    prog[i] = j as f32 / 9.0;
+                                }
+                            }
+                            {
+                                let mut values = thread_values.lock().unwrap();
+                                values[i] = 10;
+                            }
+                            // 增加已完成线程计数
+                            completed_threads.fetch_add(1, Ordering::SeqCst);
+                        });
+                    }
+                } else {
+                    ui.label("线程已在运行，请稍候...");
                 }
             }
 
@@ -82,6 +124,11 @@ impl App for MyApp {
             let quotes = self.quotes.lock().unwrap();
             for (i, quote) in quotes.iter().enumerate() {
                 ui.label(format!("线程 {} 名人名言: {}", i + 1, quote));
+            }
+
+            // 检查是否所有线程已完成
+            if self.completed_threads.load(Ordering::SeqCst) == 5 {
+                self.threads_running = false;
             }
 
             ctx.request_repaint();
